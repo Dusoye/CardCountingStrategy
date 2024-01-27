@@ -1,0 +1,26 @@
+{
+    "id": "FEBCE6A7",
+    "path": "~/Projects/blackjack/scr/00_main.R",
+    "project_path": "scr/00_main.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1706326899070.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "0,43",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1706326953,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1706326953977,
+    "read_only": false,
+    "read_only_alternatives": []
+}
