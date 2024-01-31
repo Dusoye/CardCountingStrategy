@@ -1,9 +1,11 @@
 # Initialize the deck
 initialize_deck <- function(num_decks) {
-  suits <- c("Hearts", "Diamonds", "Clubs", "Spades")
+  #suits <- c("♣", "♠", "♦", "♥")
   values <- c("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
-  deck <- expand.grid(Value = values, Suit = suits)
-  return(rep(deck, num_decks))
+  deck <- rep(values, 4) # For each suit
+  #deck <- expand.grid(value = values, suit = suits)
+  deck <- data.table(Value = rep(deck, num_decks)) # For each deck
+  return(deck)
 }
 
 # Shuffle the deck
@@ -11,14 +13,25 @@ shuffle_deck <- function(deck) {
   return(deck[sample(nrow(deck)),])
 }
 
+
+check_reshuffle <- function(deck, num_decks, reshuffle_threshold) {
+  num_cards_remaining <- nrow(deck)
+  total_cards <- num_decks * 52  
+  if ((num_cards_remaining / total_cards) <= reshuffle_threshold) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
 # Deal a card
 deal_card <- function(deck, count, count_values) {
-  card <- deck[1,]
-  remaining_deck <- deck[-1,]
+  card <- deck[1]
+  remaining_deck <- deck[-1]
   num_cards_remaining <- nrow(remaining_deck)
   num_decks_remaining <- num_cards_remaining / 52  
   
-  updated_count <- update_count(count, card, count_values, num_decks_remaining)
+  updated_count <- 0#update_count(count, card, count_values, num_decks_remaining)
   return(list("card" = card, "deck" = remaining_deck, "count" = updated_count))
 }
 
@@ -54,7 +67,7 @@ calculate_bet_size <- function(true_count, min_bet, max_bet, bet_spread) {
   }
 }
 
-# Updates the running count of the curent shoe
+# Updates the running count of the current shoe
 update_count <- function(count, card, count_values, num_decks_remaining) {
   card_value <- as.character(card$Value)
   count_change <- count_values[count_values$Card == card_value, "Count"]
@@ -78,13 +91,22 @@ load_basic_strategy <- function(file_path) {
   strategy <- read.csv(file_path, header = TRUE)
   return(strategy)
 }
+# S = Stand
+# H = Hit
+# Dh = Double (if not allowed, then hit)
+# Ds = Double (if not allowed, then stand)
+# SP = Split
+# Uh = Surrender (if not allowed, then hit)
+# Us = Surrender (if not allowed, then stand)
+# Usp = Surrender (if not allowed, then split)
 
 # Determine action based on strategy
-determine_action <- function(player_hand, dealer_card, basic_strategy, is_split_hand) {
-  
+determine_action <- function(player_hand, dealer_card, basic_strategy) {
+  dealer <- dealer_hand[1]
+  player_value <- evaluate_hand(player_hand)
 }
 
-# Player's turn with advanced splitting and doubling down
+# Player's turn
 player_turn <- function(deck, player_hand, dealer_card, basic_strategy, can_double_down, max_splits, splits_done = 0, is_split_hand = FALSE) {
   action <- determine_action(player_hand, dealer_card, basic_strategy, is_split_hand)
   
@@ -154,10 +176,31 @@ double_down <- function(deck, player_hand, can_double_after_split, is_split_hand
 
 # Main game simulation
 simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_values, reshuffle_threshold, can_split, can_double_down, max_splits) {
+  basic_strategy <- load_basic_strategy(basic_strategy)
   results <- vector("list", num_games)
   for (i in 1:num_games) {
     deck <- shuffle_deck(initialize_deck(num_decks))
-    # Rest of the game simulation logic
+    count <- list("running" = 0, "true" = 0)
+    player_hand <- data.frame()
+    dealer_hand <- data.frame()
+    
+    # Game loop
+    while (TRUE) {
+      # Check if reshuffling is needed
+      if (check_reshuffle(deck, num_decks, reshuffle_threshold)) {
+        deck <- shuffle_deck(initialize_deck(num_decks))
+        # Optionally reset the count here if playing with card counting
+        count <- list("running" = 0, "true" = 0)
+      }
+      
+      # ... existing code for dealing cards and playing the game ...
+      
+      # Break the loop or continue to the next game based on game logic
+    }
+  }
+  
+  # ... return results ...
+}
   }
   return(results)
 }
