@@ -2,8 +2,9 @@
 # Settings and running the simulation
 num_games <- 1000
 num_decks <- 4
+num_players <- 1
 basic_strategy <- load_basic_strategy("./data/basic_strategy.csv")
-count_values <- load_card_count_values("./data/count_values.csv")
+count_values <- load_card_count_values("./data/count_system.csv")
 reshuffle_threshold <- 0.25
 
 # Game rules
