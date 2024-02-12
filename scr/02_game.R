@@ -92,16 +92,16 @@ load_basic_strategy <- function(file_path) {
 }
 
 # Determine action based on strategy
-determine_action <- function(player_hand, dealer_upcard, basic_strategy_df) {
+determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, is_split_hand) {
   player_total <- evaluate_hand(player_hand)  # Evaluate player's hand total
   dealer_upcard_value <- as.character(dealer_upcard$Value)  # Ensure dealer upcard is character for comparison
   
   # Handle face cards and Aces for the dealer
   if (dealer_upcard_value %in% c("J", "Q", "K")) {
     dealer_upcard_value <- "10"
-  } else if (dealer_upcard_value == "A") {
-    dealer_upcard_value <- "11"
-  }
+  } #else if (dealer_upcard_value == "A") {
+    #dealer_upcard_value <- "11"
+  #}
   
   # Determine if the hand is soft, hard, or a pair
   hand_type <- ifelse(nrow(player_hand) == 2 && player_hand$Value[1] == player_hand$Value[2], "Pair",
@@ -142,14 +142,14 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
     return(list("hand" = player_hand, "deck" = deck, "action" = "Blackjack"))
   }
   
-  action <- determine_action(player_hand, dealer_card, basic_strategy_df, is_split_hand)
+  action <- determine_action(player_hand, dealer_card, basic_strategy_df, is_split_hand = FALSE)
   
   while (action != "S") {
     if (action == "H") {
       result <- hit_hand(deck, player_hand)  # Use hit_hand for hitting
       player_hand <- result$hand
       deck <- result$deck
-    } else if (action == "D" && can_double_down && nrow(player_hand) == 2) {
+    } else if (action == "Dh" && can_double_down && nrow(player_hand) == 2) {
       # Perform double down if allowed and it's the first two cards
       result <- double_down(deck, player_hand, can_double_down, is_split_hand)
       player_hand <- result$hand
@@ -180,6 +180,65 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
   }
   
   return(list("hand" = player_hand, "deck" = deck))
+}
+
+player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_double_down, can_split, max_splits, stand_soft_17, can_surrender) {
+  # Check for Blackjack 
+  if (nrow(player_hand) == 2 && sum(ifelse(player_hand$Value == "A", 11, ifelse(player_hand$Value %in% c("10", "J", "Q", "K"), 10, as.numeric(player_hand$Value)))) == 21) {
+    return(list("hand" = player_hand, "deck" = deck, "outcome" = "Blackjack"))
+  }
+  
+  action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)  # Determine initial action
+  
+  # # Check for surrender
+  # if (startsWith(action, "U") && can_surrender && nrow(player_hand) == 2) {
+  #   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Surrender"))
+  # }
+  # 
+  # # Check for double
+  # if (startsWith(action, "D") && can_double_down && nrow(player_hand) == 2) {
+  #   # Perform double down if allowed and it's the first two cards
+  #   result <- double_down(deck, player_hand, can_double_down, is_split_hand)
+  #   player_hand <- result$hand
+  #   deck <- result$deck
+  #   
+  #   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Double"))
+  # }
+  
+  # Amend action for doubles and surrenders depending on eligibility
+  final_action <- switch(action,
+                   Dh = ifelse(can_double_down && nrow(player_hand) == 2, "D", "H"),  # Double if possible, else hit
+                   Ds = ifelse(can_double_down && nrow(player_hand) == 2, "D", "S"),  # Double if possible, else stand
+                   Uh = ifelse(can_surrender && nrow(player_hand) == 2, "U", "H"),  # Surrender if possible, else split
+                   Us = ifelse(can_surrender && nrow(player_hand) == 2, "U", "S"),  # Surrender if possible, else split
+                   Usp = ifelse(can_surrender && nrow(player_hand) == 2, "U", ifelse(can_split, "SP", "H")),  # Surrender if possible, else split
+                   action  # Keep original action if not matching above cases
+  )
+  # Proceed with the gameplay logic based on the final determined action
+  while (final_action != "S") {
+    if (final_action == "H") {
+      result <- hit_hand(deck, player_hand)
+      player_hand <- result$hand
+      deck <- result$deck
+    } else if (final_action == "D") {
+      result <- double_down(deck, player_hand, can_double_down, FALSE)
+      player_hand <- result$hand
+      deck <- result$deck
+      break  # End player's turn after doubling down
+    } else if (final_action == "SP" && can_split) {
+      result <- split_hand(deck, player_hand, max_splits, splits_done, basic_strategy_df, can_double_down)
+      player_hand <- result$hand
+      deck <- result$deck
+    } else if (final_action == "U") {
+      outcome
+      break  # End player's turn after doubling down
+    }
+    
+    # Re-determine action for the next round if necessary
+    final_action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)
+  }
+  
+  return(list("hand" = player_hand, "deck" = deck, "outcome" = "Continue"))
 }
 
 # Logic for hit
@@ -233,7 +292,7 @@ double_down <- function(deck, player_hand, can_double_after_split, is_split_hand
   player_hand <- rbind(player_hand, result$card)
   deck <- result$deck
   
-  return(list("hand" = player_hand, "deck" = deck, "doubled" = TRUE))
+  return(list("hand" = player_hand, "deck" = deck, "outcome" = "Doubled"))
 }
 
 # Dealer's turn
