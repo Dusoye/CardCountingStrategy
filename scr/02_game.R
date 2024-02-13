@@ -190,21 +190,6 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
   
   action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)  # Determine initial action
   
-  # # Check for surrender
-  # if (startsWith(action, "U") && can_surrender && nrow(player_hand) == 2) {
-  #   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Surrender"))
-  # }
-  # 
-  # # Check for double
-  # if (startsWith(action, "D") && can_double_down && nrow(player_hand) == 2) {
-  #   # Perform double down if allowed and it's the first two cards
-  #   result <- double_down(deck, player_hand, can_double_down, is_split_hand)
-  #   player_hand <- result$hand
-  #   deck <- result$deck
-  #   
-  #   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Double"))
-  # }
-  
   # Amend action for doubles and surrenders depending on eligibility
   final_action <- switch(action,
                    Dh = ifelse(can_double_down && nrow(player_hand) == 2, "D", "H"),  # Double if possible, else hit
@@ -220,22 +205,28 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
       result <- hit_hand(deck, player_hand)
       player_hand <- result$hand
       deck <- result$deck
-    } else if (final_action == "D") {
-      result <- double_down(deck, player_hand, can_double_down, FALSE)
-      player_hand <- result$hand
-      deck <- result$deck
-      break  # End player's turn after doubling down
     } else if (final_action == "SP" && can_split) {
       result <- split_hand(deck, player_hand, max_splits, splits_done, basic_strategy_df, can_double_down)
       player_hand <- result$hand
       deck <- result$deck
+    } else if (final_action == "D") {
+      result <- double_down(deck, player_hand, can_double_down, FALSE)
+      player_hand <- result$hand
+      deck <- result$deck
+      return(list("hand" = player_hand, "deck" = deck, "outcome" = "Double"))
+      # End player's turn after doubling down
     } else if (final_action == "U") {
-      outcome
-      break  # End player's turn after doubling down
+      return(list("hand" = player_hand, "deck" = deck, "outcome" = "Surrender"))
+      # End player's turn after surrender
     }
     
+    player_total <- evaluate_hand(player_hand)
     # Re-determine action for the next round if necessary
-    final_action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)
+    if(player_total == 21){
+      final_action <- "S"
+    } else {
+      final_action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)
+    }
   }
   
   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Continue"))
