@@ -13,7 +13,7 @@ can_double_down <- TRUE
 can_double_after_split <- TRUE
 stand_soft_17 <- TRUE
 can_insurance <- FALSE
-can_surrender <- FALSE
+can_surrender <- TRUE
 
 max_splits <- 3
 
