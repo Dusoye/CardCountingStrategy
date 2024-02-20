@@ -15,7 +15,7 @@ shuffle_deck <- function(deck) {
 
 # Check whether a reshuffle is required after the current hand
 check_reshuffle <- function(deck, num_decks, reshuffle_threshold) {
-  num_cards_remaining <- nrow(deck)
+  num_cards_remaining <- ifelse(is.null(nrow(deck)), 0, nrow(deck))
   total_cards <- num_decks * 52  
   if ((num_cards_remaining / total_cards) <= reshuffle_threshold) {
     return(TRUE)
@@ -92,7 +92,7 @@ load_basic_strategy <- function(file_path) {
 }
 
 # Determine action based on strategy
-determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, is_split_hand) {
+determine_action <- function(player_hand, dealer_upcard, basic_strategy_df) {
   player_total <- evaluate_hand(player_hand)  # Evaluate player's hand total
   dealer_upcard_value <- as.character(dealer_upcard$Value)  # Ensure dealer upcard is character for comparison
   
@@ -110,6 +110,10 @@ determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, is_s
   # Adjust for format of basic strategy data
   player_hand_notation <- if(hand_type == "Soft") {
     paste0("A:", player_total - 11)  # Subtract 11 for the Ace counted as 11
+  } else if (hand_type == "Pair" && player_hand$Value[1] %in% c("J", "Q", "K")) {
+    "10:10"
+  } else if (hand_type == "Pair") {
+    paste0(player_hand$Value[1], ":", player_hand$Value[2])
   } else {
     as.character(player_total)
   }
@@ -119,7 +123,7 @@ determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, is_s
     recommended_action_row <- basic_strategy_df[basic_strategy_df$Player == "A:A" & 
                                                   basic_strategy_df$Dealer == dealer_upcard_value & 
                                                   basic_strategy_df$Type == hand_type,]
-  } else if(player_total == 21) {
+  } else if(player_total >= 21) {
     recommended_action_row <- data.table('Action' = 'S')
   } else {
   # Look up the recommended action from the strategy dataframe
@@ -136,12 +140,13 @@ determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, is_s
 }
 
 # Player's turn
-player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_double_down, can_split, max_splits, stand_soft_17, can_surrender) {
+player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_double_down, can_split, max_splits, stand_soft_17, can_surrender, splits_done = 0) {
   # Check for Blackjack 
-  if (nrow(player_hand) == 2 && sum(ifelse(player_hand$Value == "A", 11, ifelse(player_hand$Value %in% c("10", "J", "Q", "K"), 10, as.numeric(player_hand$Value)))) == 21) {
+  if (nrow(player_hand) == 2 && evaluate_hand(player_hand) == 21) {
     return(list("hand" = player_hand, "deck" = deck, "outcome" = "Blackjack"))
   }
   
+  is_split_hand = if_else(splits_done > 0, TRUE, FALSE)
   action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)  # Determine initial action
   
   # Amend action for doubles and surrenders depending on eligibility
@@ -157,34 +162,38 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
   while (final_action != "S") {
     if (final_action == "H") {
       result <- hit_hand(deck, player_hand)
+      print(paste0('Hit ', result$hand[nrow(result$hand)]))
       player_hand <- result$hand
       deck <- result$deck
     } else if (final_action == "SP" && can_split) {
-      result <- split_hand(deck, player_hand, max_splits, splits_done, basic_strategy_df, can_double_down)
+      print('Split')
+      result <- split_hand(deck, player_hand, dealer_card, max_splits, splits_done, basic_strategy_df, can_double_down)
       player_hand <- result$hand
       deck <- result$deck
+      outcome <- result$outcome
+      return(list("hand" = player_hand, "deck" = deck, "outcome" = outcome))
     } else if (final_action == "D") {
-      result <- double_down(deck, player_hand, can_double_down, FALSE)
+      result <- double_down(deck, player_hand, can_double_after_split, is_split_hand)
+      print(paste0('Double ', result$hand[nrow(result$hand)]))
       player_hand <- result$hand
       deck <- result$deck
       return(list("hand" = player_hand, "deck" = deck, "outcome" = "Double"))
       # End player's turn after doubling down
     } else if (final_action == "U") {
+      print('Surrender')
       return(list("hand" = player_hand, "deck" = deck, "outcome" = "Surrender"))
       # End player's turn after surrender
-    }
+    } 
     
     player_total <- evaluate_hand(player_hand)
+    print(paste0('player total: ',player_total))
     # Re-determine action for the next round if necessary
-    if(player_total >= 21){
-      final_action <- "S"
-    } else {
-      final_action <- determine_action(player_hand, dealer_card, basic_strategy_df, FALSE)
-    }
+    final_action <- determine_action(player_hand, dealer_card, basic_strategy_df)
+    
   }
-  
   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Stand"))
 }
+
 
 # Logic for hit
 hit_hand <- function(deck, player_hand){
@@ -195,7 +204,7 @@ hit_hand <- function(deck, player_hand){
   return(list("hand" = player_hand, "deck" = deck))
 }
 # Logic for splitting hands
-split_hand <- function(deck, player_hand, max_splits, splits_done, basic_strategy, can_double_down) {
+split_hand <- function(deck, player_hand, dealer_card, max_splits, splits_done, basic_strategy, can_double_down) {
   if (nrow(player_hand) != 2 || player_hand[1, "Value"] != player_hand[2, "Value"] || splits_done >= max_splits) {
     return(list("hand" = player_hand, "deck" = deck))
   }
@@ -208,22 +217,17 @@ split_hand <- function(deck, player_hand, max_splits, splits_done, basic_strateg
     deck <- result$deck
     split_hands[[i]] <- new_hand
   }
-  
+
   final_hands <- list()
+  outcome <- list()
   for (split_hand in split_hands) {
-    if (nrow(split_hand) == 2 && split_hand[1, "Value"] == "A") {
-      # Some casinos only allow one card on each Ace when splitting
-      result <- deal_card(deck)
-      final_hands <- c(final_hands, list(rbind(split_hand, result$card)))
-      deck <- result$deck
-    } else {
-      result <- player_turn(deck, split_hand, basic_strategy, can_double_down, max_splits, splits_done + 1)
+      result <- player_turn(deck, split_hand, dealer_card, basic_strategy, can_double_down, max_splits, splits_done + 1)
       final_hands <- c(final_hands, list(result$hand))
+      outcome <- c(outcome, result$outcome)
       deck <- result$deck
-    }
   }
   
-  return(list("hands" = final_hands, "deck" = deck))
+  return(list("hand" = final_hands, "deck" = deck, "outcome" = outcome))
 }
 
 # Logic for doubling down
@@ -231,7 +235,7 @@ double_down <- function(deck, player_hand, can_double_after_split, is_split_hand
   if (nrow(player_hand) != 2 || (is_split_hand && !can_double_after_split)) {
     return(list("hand" = player_hand, "deck" = deck))
   }
-  
+
   # Player can only double down on the first two cards
   result <- deal_card(deck)
   player_hand <- rbind(player_hand, result$card)
@@ -242,20 +246,6 @@ double_down <- function(deck, player_hand, can_double_after_split, is_split_hand
 
 # Dealer's turn
 dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
-  evaluate_hand <- function(hand) {
-    values <- hand$Value
-    values[values == "J" | values == "Q" | values == "K"] <- 10
-    values[values == "A"] <- 11
-    
-    hand_value <- sum(as.integer(values))
-    num_aces <- sum(hand$Value == "A")
-    while (hand_value > 21 && num_aces > 0) {
-      hand_value <- hand_value - 10
-      num_aces <- num_aces - 1
-    }
-    return(hand_value)
-  }
-  
   is_soft_17 <- function(hand) {
     return(evaluate_hand(hand) == 17 && any(hand$Value == "A") && sum(as.integer(hand$Value[hand$Value != "A"])) == 6)
   }
@@ -272,9 +262,8 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
       # Stand if hand is 17 or above, or if it's a soft 17 and rule is to stand
       break
     }
+    return(list("hand" = dealer_hand, "deck" = deck))
   }
-  
-  return(list("hand" = dealer_hand, "deck" = deck))
 }
 
 
