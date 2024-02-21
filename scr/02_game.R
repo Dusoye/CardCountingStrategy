@@ -48,7 +48,7 @@ evaluate_hand <- function(hand) {
     num_aces <- num_aces - 1
   }
   
-  return(hand_value)
+  return(list("hand_value" = hand_value, "num_aces" = num_aces))
 }
 
 load_card_count_values <- function(file_path) {
@@ -93,7 +93,9 @@ load_basic_strategy <- function(file_path) {
 
 # Determine action based on strategy
 determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, can_double_down, can_surrender, can_split) {
-  player_total <- evaluate_hand(player_hand)  # Evaluate player's hand total
+  eval <- evaluate_hand(player_hand)  # Evaluate player's hand total
+  player_total <- eval$hand_value
+  num_aces <- eval$num_aces
   dealer_upcard_value <- as.character(dealer_upcard$Value)  # Ensure dealer upcard is character for comparison
   
   # Handle face cards and Aces for the dealer
@@ -105,7 +107,7 @@ determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, can_
   
   # Determine if the hand is soft, hard, or a pair
   hand_type <- ifelse(nrow(player_hand) == 2 && player_hand$Value[1] == player_hand$Value[2], "Pair",
-                      ifelse(any(player_hand$Value == "A") && player_total <= 21, "Soft", "Hard"))
+                      ifelse(num_aces > 0 && player_total <= 21, "Soft", "Hard"))
   
   # Adjust for format of basic strategy data
   player_hand_notation <- if(hand_type == "Soft") {
@@ -153,7 +155,7 @@ determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, can_
 # Player's turn
 player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_double_down, can_split, max_splits, stand_soft_17, can_surrender, splits_done = 0) {
   # Check for Blackjack 
-  if (nrow(player_hand) == 2 && evaluate_hand(player_hand) == 21) {
+  if (nrow(player_hand) == 2 && evaluate_hand(player_hand)$hand_value == 21) {
     return(list("hand" = player_hand, "deck" = deck, "outcome" = "Blackjack"))
   }
   
@@ -187,7 +189,7 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
       # End player's turn after surrender
     } 
     
-    player_total <- evaluate_hand(player_hand)
+    player_total <- evaluate_hand(player_hand)$hand_value
     print(paste0('player total: ',player_total))
     # Re-determine action for the next round if necessary
     action <- determine_action(player_hand, dealer_card, basic_strategy_df, can_double_down, can_surrender, can_split)
@@ -248,14 +250,15 @@ double_down <- function(deck, player_hand, can_double_after_split, is_split_hand
 
 # Dealer's turn
 dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
-  is_soft_17 <- function(hand) {
-    return(evaluate_hand(hand) == 17 && any(hand$Value == "A") && sum(as.integer(hand$Value[hand$Value != "A"])) == 6)
+  is_soft_17 <- function(hand_value, num_aces) {
+    return(hand_value == 17 && num_aces > 0)
   }
   print(paste0('dealer hand: ', dealer_hand))
   while(TRUE) {
-    hand_value <- evaluate_hand(dealer_hand)
-    
-    if (hand_value < 17 || (!stand_soft_17 && is_soft_17(dealer_hand))) {
+    eval <- evaluate_hand(dealer_hand)
+    hand_value <- eval$hand_value
+    num_aces <- eval$num_aces
+    if (hand_value < 17 || (!stand_soft_17 && is_soft_17(hand_value, num_aces))) {
       # Hit if hand is below 17 or if it's a soft 17 and rule is to hit on soft 17
       result <- deal_card(deck)
       dealer_hand <- rbind(dealer_hand, result$card)
@@ -266,6 +269,7 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
     }
     return(list("hand" = dealer_hand, "deck" = deck))
   }
+  return(list("hand" = dealer_hand, "deck" = deck))
 }
 
 
