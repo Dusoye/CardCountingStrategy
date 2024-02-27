@@ -10,7 +10,9 @@ initialize_deck <- function(num_decks) {
 
 # Shuffle the deck
 shuffle_deck <- function(deck) {
-  return(deck[sample(nrow(deck)),])
+  deck <- deck[sample(nrow(deck)),]
+  count <- data.table(system = unique(count_values$CardStrategy), 'running' = 0, 'true' = 0)
+  return(list("deck" = deck, "count" = count))
 }
 
 # Check whether a reshuffle is required after the current hand
@@ -68,7 +70,9 @@ calculate_bet_size <- function(true_count, min_bet, max_bet, bet_spread) {
 
 # Updates the running count of the current shoe
 update_count <- function(count, card, count_values, num_decks_remaining) {
-  card_value <- as.character(card$Value)
+  card_values <- card$Value
+  card_values[card_values == "J" | card_values == "Q" | card_values == "K"] <- 10
+  
   count_change <- count_values[count_values$Card == card_value, "Count"]
   if (length(count_change) > 0) {
     count$running <- count$running + count_change
@@ -166,11 +170,11 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
   while (action != "S") {
     if (action == "H") {
       result <- hit_hand(deck, player_hand)
-      print(paste0('Hit ', result$hand[nrow(result$hand)]))
+      #print(paste0('Hit ', result$hand[nrow(result$hand)]))
       player_hand <- result$hand
       deck <- result$deck
     } else if (action == "SP" && can_split) {
-      print('Split')
+      #print('Split')
       result <- split_hand(deck, player_hand, dealer_card, max_splits, splits_done, basic_strategy_df, can_double_down)
       player_hand <- result$hand
       deck <- result$deck
@@ -178,22 +182,22 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
       return(list("hand" = player_hand, "deck" = deck, "outcome" = outcome))
     } else if (action == "D") {
       result <- double_down(deck, player_hand, can_double_after_split, is_split_hand)
-      print(paste0('Double ', result$hand[nrow(result$hand)]))
+      #print(paste0('Double ', result$hand[nrow(result$hand)]))
       player_hand <- result$hand
       deck <- result$deck
       return(list("hand" = player_hand, "deck" = deck, "outcome" = "Double"))
       # End player's turn after doubling down
     } else if (action == "U") {
-      print('Surrender')
+      #print('Surrender')
       return(list("hand" = player_hand, "deck" = deck, "outcome" = "Surrender"))
       # End player's turn after surrender
     } 
     
     player_total <- evaluate_hand(player_hand)$hand_value
-    print(paste0('player total: ',player_total))
+    #print(paste0('player total: ',player_total))
     # Re-determine action for the next round if necessary
     action <- determine_action(player_hand, dealer_card, basic_strategy_df, can_double_down, can_surrender, can_split)
-    print(paste0('final action: ', action))
+    #print(paste0('final action: ', action))
   }
   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Stand"))
 }
@@ -253,7 +257,7 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
   is_soft_17 <- function(hand_value, num_aces) {
     return(hand_value == 17 && num_aces > 0)
   }
-  print(paste0('dealer hand: ', dealer_hand))
+  #print(paste0('dealer hand: ', dealer_hand))
   while(TRUE) {
     eval <- evaluate_hand(dealer_hand)
     hand_value <- eval$hand_value
@@ -267,7 +271,6 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
       # Stand if hand is 17 or above, or if it's a soft 17 and rule is to stand
       break
     }
-    return(list("hand" = dealer_hand, "deck" = deck))
   }
   return(list("hand" = dealer_hand, "deck" = deck))
 }
@@ -275,11 +278,20 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
 
 # Main game simulation
 simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_values, reshuffle_threshold, can_split, can_double_down, max_splits, num_players, stand_soft_17) {
+  
   results <- vector("list", num_games)  # Initialize a list to store results of each game
+  deck <- shuffle_deck(initialize_deck(num_decks))  # Initialize and shuffle the deck(s)
+  count <- deck$count # Reset card counts
+  deck <- deck$deck
   
   for (game_idx in 1:num_games) {  # Loop over the number of games to simulate
-    deck <- shuffle_deck(initialize_deck(num_decks))  # Initialize and shuffle the deck(s)
-    count <- list("running" = 0, "true" = 0)  # Initialize card count
+    if (check_reshuffle(deck, num_decks, reshuffle_threshold)) {
+      deck <- shuffle_deck(initialize_deck(num_decks))
+      count <- deck$count
+      deck <- deck$deck
+    } else {
+      deck <- deck
+    }
     
     # Initialize hands for multiple players
     players_hands <- vector("list", num_players)
@@ -292,50 +304,109 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
         deal_result <- deal_card(deck, count, count_values)
         player_hand <- rbind(player_hand, deal_result$card)
         deck <- deal_result$deck
-        count <- update_count(deal_result$card, count, count_values)  # Update count after dealing
+        
       }
       players_hands[[player_idx]] <- player_hand
       #bet_sizes[player_idx] <- calculate_bet_size(count$true, min_bet, max_bet, bet_spread)  # Determine bet size based on true count
     }
-    
     # Initial dealing for the dealer
     dealer_hand <- data.frame()
     for (j in 1:2) {
       deal_result <- deal_card(deck, count, count_values)
       dealer_hand <- rbind(dealer_hand, deal_result$card)
       deck <- deal_result$deck
-      count <- update_count(deal_result$card, count, count_values)  # Update count after dealing
     }
-    
     # Player turns
-    player_outcomes <- vector("list", num_players)
+    players_outcome <- vector("list", num_players)
+    players_value <- vector("list", num_players)
     for (player_idx in 1:num_players) {
-      player_result <- player_turn(deck, players_hands[[player_idx]], dealer_hand[1,], basic_strategy, can_double_down, max_splits, stand_soft_17, count, count_values)
+      player_result <-player_turn(deck, players_hands[[player_idx]], dealer_hand[1,], basic_strategy, can_double_down, max_splits, stand_soft_17, can_surrender = can_surrender)
       players_hands[[player_idx]] <- player_result$hand
+      
+      # Work out value of players hands adjusting for splits
+      if(length(players_hands[[player_idx]]) == 1){
+        players_value[[player_idx]] <- evaluate_hand(players_hands[[player_idx]])$hand_value
+      } else {
+        tmp <- vector("list", 2)
+        for(hands in 1:length(players_hands[[player_idx]])){
+          tmp[[hands]] <- evaluate_hand(players_hands[[player_idx]][[hands]])$hand_value
+        }
+        players_value[[player_idx]] <- tmp
+      }
+      
+      players_outcome[[player_idx]] <- player_result$outcome
       deck <- player_result$deck
       # Optionally, update count here if necessary
-      player_outcomes[[player_idx]] <- determine_winner(players_hands[[player_idx]], dealer_hand)  # Determine outcome for each player
+      #player_outcomes[[player_idx]] <- determine_winner(players_hands[[player_idx]], dealer_hand)  # Determine outcome for each player
     }
     
     # Dealer's turn
     dealer_result <- dealer_turn(deck, dealer_hand, stand_soft_17)
     dealer_hand <- dealer_result$hand
+    dealer_value <- evaluate_hand(dealer_hand)$hand_value
     deck <- dealer_result$deck
     
     # Compile results for the game
-    game_results <- list()
-    for (player_idx in 1:num_players) {
-      game_results[[player_idx]] <- list("outcome" = player_outcomes[[player_idx]], "player_hand" = players_hands[[player_idx]], "dealer_hand" = dealer_hand, "bet_size" = bet_sizes[player_idx])
-    }
-    
-    results[[game_idx]] <- game_results
-    
-    # Check if reshuffling is needed based on the threshold
-    if (check_reshuffle(deck, num_decks, reshuffle_threshold)) {
-      deck <- shuffle_deck(initialize_deck(num_decks))  # Reshuffle the decks
-      count <- list("running" = 0, "true" = 0)  # Reset count after reshuffling
-    }
+    results[[game_idx]] <- list(player = players_hands, 
+                                player_value = players_value,
+                                outcome = players_outcome, 
+                                dealer = dealer_hand,
+                                dealer_value = dealer_value)
   }
   
   return(results)  # Return the results of all simulated games
+}
+
+calculate_winners <- function(game_result) {
+  dealer_value <- game_result$dealer_value
+  
+  player_results <- lapply(seq_along(game_result$player_value), function(player_idx) {
+    player_hands <- game_result$player_value[[player_idx]]
+    hand_outcomes <- game_result$outcome[[player_idx]]
+    
+    # Handle both single and split hands
+    if (is.list(player_hands)) {  # Player has split hands
+      hand_results <- lapply(seq_along(player_hands), function(hand_idx) {
+        player_value <- player_hands[[hand_idx]]
+        outcome <- hand_outcomes[[hand_idx]]
+        
+        # Calculate numerical result for each hand
+        calculate_hand_result(player_value, outcome, dealer_value)
+      })
+      
+      return(hand_results)
+    } else {  # Single hand
+      return(calculate_hand_result(player_hands, hand_outcomes, dealer_value))
+    }
+  })
+  
+  return(player_results)
+}
+
+calculate_hand_result <- function(player_value, outcome, dealer_value) {
+  # Blackjack win
+  if (outcome == "Blackjack") {
+    return(1.5)
+  } 
+  # Surrender
+  else if (outcome == "Surrender") {
+    return(-0.5)
+  }
+  
+  # Player busts or dealer wins
+  if (player_value > 21) {
+    return(ifelse(outcome == "Double", -2, -1))
+  } 
+  # Player wins
+  else if (dealer_value > 21 || player_value > dealer_value) {
+    return(ifelse(outcome == "Double", 2, 1))
+  } 
+  # Push
+  else if (player_value == dealer_value) {
+    return(0)
+  } 
+  # Dealer wins
+  else {
+    return(ifelse(outcome == "Double", -2, -1))
+  }
 }
