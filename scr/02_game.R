@@ -212,7 +212,7 @@ hit_hand <- function(deck, player_hand){
   return(list("hand" = player_hand, "deck" = deck))
 }
 # Logic for splitting hands
-split_hand <- function(deck, player_hand, dealer_card, max_splits, splits_done, basic_strategy, can_double_down) {
+split_hand <- function(deck, player_hand, dealer_card, max_splits, splits_done, basic_strategy, can_double_down, can_surrender = TRUE) {
   if (nrow(player_hand) != 2 || player_hand[1, "Value"] != player_hand[2, "Value"] || splits_done >= max_splits) {
     return(list("hand" = player_hand, "deck" = deck))
   }
@@ -229,7 +229,7 @@ split_hand <- function(deck, player_hand, dealer_card, max_splits, splits_done, 
   final_hands <- list()
   outcome <- list()
   for (split_hand in split_hands) {
-      result <- player_turn(deck, split_hand, dealer_card, basic_strategy, can_double_down, max_splits, splits_done + 1)
+      result <- player_turn(deck, split_hand, dealer_card, basic_strategy, can_double_down, can_split, max_splits, stand_soft_17, can_surrender, splits_done + 1)
       final_hands <- c(final_hands, list(result$hand))
       outcome <- c(outcome, result$outcome)
       deck <- result$deck
@@ -320,7 +320,7 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
     players_outcome <- vector("list", num_players)
     players_value <- vector("list", num_players)
     for (player_idx in 1:num_players) {
-      player_result <-player_turn(deck, players_hands[[player_idx]], dealer_hand[1,], basic_strategy, can_double_down, max_splits, stand_soft_17, can_surrender = can_surrender)
+      player_result <-player_turn(deck, players_hands[[player_idx]], dealer_hand[1,], basic_strategy, can_double_down, can_split, max_splits, stand_soft_17, can_surrender)
       players_hands[[player_idx]] <- player_result$hand
       
       # Work out value of players hands adjusting for splits
@@ -364,20 +364,26 @@ calculate_winners <- function(game_result) {
     player_hands <- game_result$player_value[[player_idx]]
     hand_outcomes <- game_result$outcome[[player_idx]]
     
+    # Initialize sum for the player in this round
+    player_sum <- 0
+    
     # Handle both single and split hands
     if (is.list(player_hands)) {  # Player has split hands
-      hand_results <- lapply(seq_along(player_hands), function(hand_idx) {
+      hand_results <- sapply(seq_along(player_hands), function(hand_idx) {
         player_value <- player_hands[[hand_idx]]
         outcome <- hand_outcomes[[hand_idx]]
         
-        # Calculate numerical result for each hand
+        # Calculate numerical result for each hand and sum them
         calculate_hand_result(player_value, outcome, dealer_value)
       })
       
-      return(hand_results)
+      # Sum results for split hands
+      player_sum <- sum(hand_results)
     } else {  # Single hand
-      return(calculate_hand_result(player_hands, hand_outcomes, dealer_value))
+      player_sum <- calculate_hand_result(player_hands, hand_outcomes, dealer_value)
     }
+    
+    return(player_sum)
   })
   
   return(player_results)
@@ -410,3 +416,28 @@ calculate_hand_result <- function(player_value, outcome, dealer_value) {
     return(ifelse(outcome == "Double", -2, -1))
   }
 }
+
+calculate_running_sum <- function(results, num_players) {
+  # Initialize a vector to store the running sum for each player
+  running_sums <- numeric(num_players)
+  
+  # Iterate through each game's results
+  for (game in results) {
+    # Iterate through each player in the game
+    for (player_idx in seq_along(game)) {
+      player_result <- game[[player_idx]]
+      
+      # Check if the player has multiple hands (result of split)
+      if (is.list(player_result)) {
+        # Sum the results for split hands and add to the running sum for the player
+        running_sums[player_idx] <- running_sums[player_idx] + sum(unlist(player_result))
+      } else {
+        # Add the result to the running sum for the player
+        running_sums[player_idx] <- running_sums[player_idx] + player_result
+      }
+    }
+  }
+  
+  return(running_sums)
+}
+
