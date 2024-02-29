@@ -11,7 +11,7 @@ initialize_deck <- function(num_decks) {
 # Shuffle the deck
 shuffle_deck <- function(deck) {
   deck <- deck[sample(nrow(deck)),]
-  count <- data.table(system = unique(count_values$CardStrategy), 'running' = 0, 'true' = 0)
+  count <- data.table(system = unique(count_values$system), 'running' = 0, 'true' = 0)
   return(list("deck" = deck, "count" = count))
 }
 
@@ -70,13 +70,12 @@ calculate_bet_size <- function(true_count, min_bet, max_bet, bet_spread) {
 
 # Updates the running count of the current shoe
 update_count <- function(count, card, count_values, num_decks_remaining) {
-  card_values <- card$Value
-  card_values[card_values == "J" | card_values == "Q" | card_values == "K"] <- 10
+  card_value <- card$Value
+  card_value[card_value == "J" | card_value == "Q" | card_value == "K"] <- 10
   
-  count_change <- count_values[count_values$Card == card_value, "Count"]
-  if (length(count_change) > 0) {
-    count$running <- count$running + count_change
-  }
+  count_change <- count_values[count_values$name == card_value, c("system","value")]
+  count[count_change, on = .(system), running := running + value]
+  
   count$true <- calculate_true_count(count$running, num_decks_remaining)
   return(count)
 }
@@ -257,6 +256,11 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
   is_soft_17 <- function(hand_value, num_aces) {
     return(hand_value == 17 && num_aces > 0)
   }
+  
+  if (nrow(dealer_hand) == 2 && evaluate_hand(dealer_hand)$hand_value == 21) {
+    return(list("hand" = dealer_hand, "deck" = deck, "dealer_outcome" = "Blackjack"))
+  }
+
   #print(paste0('dealer hand: ', dealer_hand))
   while(TRUE) {
     eval <- evaluate_hand(dealer_hand)
@@ -272,7 +276,8 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
       break
     }
   }
-  return(list("hand" = dealer_hand, "deck" = deck))
+
+  return(list("hand" = dealer_hand, "deck" = deck, "dealer_outcome" = "Stand"))
 }
 
 
@@ -345,13 +350,15 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
     dealer_hand <- dealer_result$hand
     dealer_value <- evaluate_hand(dealer_hand)$hand_value
     deck <- dealer_result$deck
+    dealer_outcome <- dealer_result$dealer_outcome
     
     # Compile results for the game
     results[[game_idx]] <- list(player = players_hands, 
                                 player_value = players_value,
                                 outcome = players_outcome, 
                                 dealer = dealer_hand,
-                                dealer_value = dealer_value)
+                                dealer_value = dealer_value,
+                                dealer_outcome = dealer_outcome)
   }
   
   return(results)  # Return the results of all simulated games
@@ -359,6 +366,7 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
 
 calculate_winners <- function(game_result) {
   dealer_value <- game_result$dealer_value
+  dealer_outcome <- game_result$dealer_outcome
   
   player_results <- lapply(seq_along(game_result$player_value), function(player_idx) {
     player_hands <- game_result$player_value[[player_idx]]
@@ -374,13 +382,13 @@ calculate_winners <- function(game_result) {
         outcome <- hand_outcomes[[hand_idx]]
         
         # Calculate numerical result for each hand and sum them
-        calculate_hand_result(player_value, outcome, dealer_value)
+        calculate_hand_result(player_value, outcome, dealer_value, dealer_outcome)
       })
       
       # Sum results for split hands
       player_sum <- sum(hand_results)
     } else {  # Single hand
-      player_sum <- calculate_hand_result(player_hands, hand_outcomes, dealer_value)
+      player_sum <- calculate_hand_result(player_hands, hand_outcomes, dealer_value, dealer_outcome)
     }
     
     return(player_sum)
@@ -389,9 +397,13 @@ calculate_winners <- function(game_result) {
   return(player_results)
 }
 
-calculate_hand_result <- function(player_value, outcome, dealer_value) {
+calculate_hand_result <- function(player_value, outcome, dealer_value, dealer_outcome) {
+  # Blackjack push
+  if (outcome == "Blackjack" & dealer_outcome == "Blackjack") {
+    return(0)
+  } 
   # Blackjack win
-  if (outcome == "Blackjack") {
+  else if (outcome == "Blackjack") {
     return(1.5)
   } 
   # Surrender

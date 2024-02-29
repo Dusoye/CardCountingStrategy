@@ -14,8 +14,9 @@ can_double_after_split <- TRUE
 stand_soft_17 <- FALSE
 can_insurance <- TRUE
 can_surrender <- TRUE
+blackjack_pays <- 1.5
 
-max_splits <- 3
+max_splits <- 2
 
 # Bet sizing
 min_bet <- 10  # Minimum bet size
