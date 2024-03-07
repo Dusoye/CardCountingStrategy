@@ -40,3 +40,12 @@ results_df %>%
   pivot_longer(cols = c('p1','p2')) %>% 
   ggplot(aes(x = gameid, y=value, colour = name)) +
   geom_step() + theme_minimal()
+
+
+results_df %>%
+  mutate(p1 = cumsum(V1)) %>%
+  mutate(gameid=row_number()) %>% 
+  select(p1, gameid) %>%
+  #pivot_longer(cols = c('p1','p2')) %>% 
+  ggplot(aes(x = gameid, y=p1)) +
+  geom_step() + theme_minimal()

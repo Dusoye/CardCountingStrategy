@@ -33,7 +33,7 @@ deal_card <- function(deck, count, count_values) {
   num_cards_remaining <- nrow(remaining_deck)
   num_decks_remaining <- num_cards_remaining / 52  
   
-  updated_count <- 0#update_count(count, card, count_values, num_decks_remaining)
+  updated_count <- update_count(count, card, count_values, num_decks_remaining)
   return(list("card" = card, "deck" = remaining_deck, "count" = updated_count))
 }
 
@@ -404,7 +404,7 @@ calculate_hand_result <- function(player_value, outcome, dealer_value, dealer_ou
   } 
   # Blackjack win
   else if (outcome == "Blackjack") {
-    return(1.5)
+    return(blackjack_pays)
   } 
   # Surrender
   else if (outcome == "Surrender") {
