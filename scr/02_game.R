@@ -27,15 +27,21 @@ check_reshuffle <- function(deck, num_decks, reshuffle_threshold) {
 }
 
 # Deal a card
-deal_card <- function(deck, count, count_values) {
+deal_card <- function(deck) {
   card <- deck[1]
   remaining_deck <- deck[-1]
-  num_cards_remaining <- nrow(remaining_deck)
-  num_decks_remaining <- num_cards_remaining / 52  
-  
-  updated_count <- update_count(count, card, count_values, num_decks_remaining)
-  return(list("card" = card, "deck" = remaining_deck, "count" = updated_count))
+  return(list("card" = card, "deck" = remaining_deck))
 }
+
+# function(deck, count, count_values = count_values) {
+#   card <- deck[1]
+#   remaining_deck <- deck[-1]
+#   num_cards_remaining <- nrow(remaining_deck)
+#   num_decks_remaining <- num_cards_remaining / 52  
+#   
+#   updated_count <- 0#update_count(count, card, count_values, num_decks_remaining)
+#   return(list("card" = card, "deck" = remaining_deck, "count" = updated_count))
+# }
 
 # Evaluate hand value
 evaluate_hand <- function(hand) {
@@ -59,11 +65,12 @@ load_card_count_values <- function(file_path) {
 }
 
 # Calculate size of the bet given the bet spread and true count
-calculate_bet_size <- function(true_count, min_bet, max_bet, bet_spread) {
-  if (true_count <= 1) {
+calculate_bet_size <- function(count, min_bet, max_bet, bet_spread, count_system) {
+  true_count <- filter(count, system == count_system)
+  if (true_count$true <= 1) {
     return(min_bet)
   } else {
-    bet_size <- min_bet * bet_spread * (true_count - 1)
+    bet_size <- min_bet * bet_spread * (true_count$true - 1)
     return(min(bet_size, max_bet))
   }
 }
@@ -80,14 +87,30 @@ update_count <- function(count, card, count_values, num_decks_remaining) {
   return(count)
 }
 
-# Calculate the true count
-calculate_true_count <- function(running_count, num_decks_remaining) {
-  if (num_decks_remaining > 0) {
-    return(running_count / num_decks_remaining)
-  } else {
-    return(running_count)
-  }
+
+calculate_round_count <- function(player, dealer, count_values, deck, count) {
+  # Calculate number of decks remaining for true count
+  num_decks_remaining <- nrow(deck) / 52  
+  
+  # Combine player and dealer card values
+  all_cards <- as.data.table(c(unlist(player), unlist(dealer)))
+  all_cards <- rename(all_cards, name = V1)
+  all_cards[all_cards == "J" | all_cards == "Q" | all_cards == "K"] <- 10
+  
+  # Look up the count value for each card and summarise count per system
+  count_change <- left_join(all_cards, count_values, by = 'name', relationship = "many-to-many") %>%
+    select(-name) %>%
+    group_by(system) %>%
+    summarise(value = sum(value))
+  
+  total_count <- inner_join(count, count_change, by = 'system') %>%
+    mutate(running = running + value,
+           true = running / num_decks_remaining) %>%
+    select(-value) 
+
+  return(total_count)
 }
+
 
 load_basic_strategy <- function(file_path) {
   strategy <- read.csv(file_path, header = TRUE)
@@ -158,8 +181,10 @@ determine_action <- function(player_hand, dealer_upcard, basic_strategy_df, can_
 # Player's turn
 player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_double_down, can_split, max_splits, stand_soft_17, can_surrender, splits_done = 0) {
   # Check for Blackjack 
-  if (nrow(player_hand) == 2 && evaluate_hand(player_hand)$hand_value == 21) {
+  if (nrow(player_hand) == 2 && evaluate_hand(player_hand)$hand_value == 21 && splits_done == 0) {
     return(list("hand" = player_hand, "deck" = deck, "outcome" = "Blackjack"))
+  } else if (nrow(player_hand) == 2 && evaluate_hand(player_hand)$hand_value == 21 && splits_done > 0) {
+    return(list("hand" = player_hand, "deck" = deck, "outcome" = "Stand"))
   }
   
   is_split_hand = if_else(splits_done > 0, TRUE, FALSE)
@@ -300,13 +325,13 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
     
     # Initialize hands for multiple players
     players_hands <- vector("list", num_players)
-    bet_sizes <- numeric(num_players)  # Track bet sizes for each player
+    bet_sizes <- c(calculate_bet_size(count, min_bet, max_bet, bet_spread, count_system), 10) # Dynamic sizing for player 1, flat for player 2
     
     # Initial dealing for each player
     for (player_idx in 1:num_players) {
       player_hand <- data.frame()
       for (j in 1:2) {
-        deal_result <- deal_card(deck, count, count_values)
+        deal_result <- deal_card(deck)
         player_hand <- rbind(player_hand, deal_result$card)
         deck <- deal_result$deck
         
@@ -317,7 +342,7 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
     # Initial dealing for the dealer
     dealer_hand <- data.frame()
     for (j in 1:2) {
-      deal_result <- deal_card(deck, count, count_values)
+      deal_result <- deal_card(deck)
       dealer_hand <- rbind(dealer_hand, deal_result$card)
       deck <- deal_result$deck
     }
@@ -341,8 +366,7 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
       
       players_outcome[[player_idx]] <- player_result$outcome
       deck <- player_result$deck
-      # Optionally, update count here if necessary
-      #player_outcomes[[player_idx]] <- determine_winner(players_hands[[player_idx]], dealer_hand)  # Determine outcome for each player
+      
     }
     
     # Dealer's turn
@@ -352,13 +376,22 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
     deck <- dealer_result$deck
     dealer_outcome <- dealer_result$dealer_outcome
     
+    # Update count
+    count <- calculate_round_count(player = players_hands,
+                                   dealer = dealer_hand,
+                                   count_values,
+                                   deck,
+                                   count)
+    
     # Compile results for the game
     results[[game_idx]] <- list(player = players_hands, 
                                 player_value = players_value,
                                 outcome = players_outcome, 
                                 dealer = dealer_hand,
                                 dealer_value = dealer_value,
-                                dealer_outcome = dealer_outcome)
+                                dealer_outcome = dealer_outcome,
+                                count = count,
+                                bet_sizes = bet_sizes)
   }
   
   return(results)  # Return the results of all simulated games
