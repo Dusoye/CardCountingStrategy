@@ -325,7 +325,7 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
     
     # Initialize hands for multiple players
     players_hands <- vector("list", num_players)
-    bet_sizes <- c(calculate_bet_size(count, min_bet, max_bet, bet_spread, count_system), 10) # Dynamic sizing for player 1, flat for player 2
+    bet_sizes <- c(calculate_bet_size(count, min_bet, max_bet, bet_spread, count_system), 50) # Dynamic sizing for player 1, flat for player 2
     
     # Initial dealing for each player
     for (player_idx in 1:num_players) {
@@ -400,6 +400,7 @@ simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_value
 calculate_winners <- function(game_result) {
   dealer_value <- game_result$dealer_value
   dealer_outcome <- game_result$dealer_outcome
+  bet_sizes <- game_result$bet_sizes
   
   player_results <- lapply(seq_along(game_result$player_value), function(player_idx) {
     player_hands <- game_result$player_value[[player_idx]]
@@ -423,7 +424,7 @@ calculate_winners <- function(game_result) {
     } else {  # Single hand
       player_sum <- calculate_hand_result(player_hands, hand_outcomes, dealer_value, dealer_outcome)
     }
-    
+    player_sum <- player_sum * bet_sizes[player_idx]
     return(player_sum)
   })
   
