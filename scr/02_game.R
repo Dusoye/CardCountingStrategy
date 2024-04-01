@@ -33,16 +33,6 @@ deal_card <- function(deck) {
   return(list("card" = card, "deck" = remaining_deck))
 }
 
-# function(deck, count, count_values = count_values) {
-#   card <- deck[1]
-#   remaining_deck <- deck[-1]
-#   num_cards_remaining <- nrow(remaining_deck)
-#   num_decks_remaining <- num_cards_remaining / 52  
-#   
-#   updated_count <- 0#update_count(count, card, count_values, num_decks_remaining)
-#   return(list("card" = card, "deck" = remaining_deck, "count" = updated_count))
-# }
-
 # Evaluate hand value
 evaluate_hand <- function(hand) {
   values <- hand$Value
@@ -71,7 +61,7 @@ calculate_bet_size <- function(count, min_bet, max_bet, bet_spread, count_system
     return(min_bet)
   } else {
     bet_size <- min_bet * bet_spread * (true_count$true - 1)
-    return(min(bet_size, max_bet))
+    return(max(min(bet_size, max_bet), min_bet))
   }
 }
 
@@ -86,7 +76,6 @@ update_count <- function(count, card, count_values, num_decks_remaining) {
   count$true <- calculate_true_count(count$running, num_decks_remaining)
   return(count)
 }
-
 
 calculate_round_count <- function(player, dealer, count_values, deck, count) {
   # Calculate number of decks remaining for true count
@@ -110,7 +99,6 @@ calculate_round_count <- function(player, dealer, count_values, deck, count) {
 
   return(total_count)
 }
-
 
 load_basic_strategy <- function(file_path) {
   strategy <- read.csv(file_path, header = TRUE)
@@ -226,7 +214,6 @@ player_turn <- function(deck, player_hand, dealer_card, basic_strategy_df, can_d
   return(list("hand" = player_hand, "deck" = deck, "outcome" = "Stand"))
 }
 
-
 # Logic for hit
 hit_hand <- function(deck, player_hand){
   result <- deal_card(deck)
@@ -304,7 +291,6 @@ dealer_turn <- function(deck, dealer_hand, stand_soft_17) {
 
   return(list("hand" = dealer_hand, "deck" = deck, "dealer_outcome" = "Stand"))
 }
-
 
 # Main game simulation
 simulate_blackjack <- function(num_games, num_decks, basic_strategy, count_values, reshuffle_threshold, can_split, can_double_down, max_splits, num_players, stand_soft_17) {
