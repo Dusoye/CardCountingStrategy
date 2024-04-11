@@ -9,3 +9,7 @@ Further work can be done on more optimally adjusting bet sizing (potentially usi
 An example of using a counting strategy is below, showing player 1 using a 'Hi-Low' count system (min size:10, max size:100, spread:10), whilst player 2 just flat bets 50, over 1000 games.
 
 ![count example](./output/counting_example.png)
+
+Using different counting stategies for player 1 shows that they're not all equal, and over this 1000 hand simulation, the player would have lost money using 'Hi-OptII'
+
+![strategy example](./output/strats.png)

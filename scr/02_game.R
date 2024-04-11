@@ -94,7 +94,7 @@ calculate_round_count <- function(player, dealer, count_values, deck, count) {
   
   total_count <- inner_join(count, count_change, by = 'system') %>%
     mutate(running = running + value,
-           true = running / num_decks_remaining) %>%
+           true = round(running / num_decks_remaining), 1) %>%
     select(-value) 
 
   return(total_count)
@@ -473,3 +473,56 @@ calculate_running_sum <- function(results, num_players) {
   return(running_sums)
 }
 
+# Results from different count strategies
+calculate_winners_strategies <- function(game_result, player_number) {
+  count <- data.table(system = unique(count_values$system), 'running' = 0, 'true' = 0)
+  bet_results <- data.table(
+    gameidx = numeric(),
+    system = character(),
+    running = numeric(),
+    true = numeric(),
+    bet_size = numeric(),
+    hand_result = numeric()
+  )
+  
+  for(i in 1:num_games){
+    count <- if(i == 1){
+      count
+    } else {
+      game_result[[i-1]]$count
+    }
+    
+    dealer_value <- game_result[[i]]$dealer_value
+    dealer_outcome <- game_result[[i]]$dealer_outcome
+    player_value <- game_result[[i]]$player_value[[player_number]]
+    player_outcome <- game_result[[i]]$outcome[[player_number]]
+    
+    count$bet_size = 0
+    count$bet_size <- sapply(1:nrow(count), function(j) {
+      calculate_bet_size(count[j, ], min_bet, max_bet, bet_spread, count_system = count[j, ]$system)
+    })
+    
+    if (is.list(player_value)) {  # Player has split hands
+      hand_results <- sapply(seq_along(player_value), function(hand_idx) {
+        value <- player_value[[hand_idx]]
+        outcome <- player_outcome[[hand_idx]]
+        
+        # Calculate numerical result for each hand and sum them
+        calculate_hand_result(value, outcome, dealer_value, dealer_outcome)
+      })
+      
+      # Sum results for split hands
+      player_sum <- sum(hand_results)
+    } else {  # Single hand
+      player_sum <- calculate_hand_result(player_value, player_outcome, dealer_value, dealer_outcome)
+    }
+    player_sum <- player_sum * count$bet_size
+    
+    new_data <- count
+    new_data$gameidx <- i
+    new_data$hand_result <- player_sum
+    
+    bet_results <- rbindlist(list(bet_results, new_data), use.names = TRUE, fill = TRUE)
+  }
+  return(bet_results)
+}

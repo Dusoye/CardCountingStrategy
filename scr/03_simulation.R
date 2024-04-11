@@ -16,7 +16,7 @@ can_insurance <- TRUE
 can_surrender <- FALSE
 blackjack_pays <- 1.5
 
-max_splits <- 2
+max_splits <- 1
 
 # Bet sizing
 min_bet <- 10  # Minimum bet size
@@ -42,3 +42,13 @@ results_df %>%
   ggplot(aes(x = gameid, y=value, colour = name)) +
   geom_step() + theme_minimal() +
   ggtitle(paste0('Bet Strategy - P1: ', count_system, ' P2: Flat'))
+
+
+multistrat <- calculate_winners_strategies(results, 21)
+multistrat %>%
+  group_by(system) %>%
+  mutate(profit = cumsum(hand_result)) %>%
+  ggplot(aes(x = gameidx, y = profit, colour = system)) +
+  geom_step() +
+  theme_minimal() +
+  ggtitle('Different count strategies')
