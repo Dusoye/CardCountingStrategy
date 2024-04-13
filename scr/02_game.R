@@ -94,7 +94,7 @@ calculate_round_count <- function(player, dealer, count_values, deck, count) {
   
   total_count <- inner_join(count, count_change, by = 'system') %>%
     mutate(running = running + value,
-           true = round(running / num_decks_remaining), 1) %>%
+           true = round(running / num_decks_remaining, 1)) %>%
     select(-value) 
 
   return(total_count)

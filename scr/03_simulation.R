@@ -1,6 +1,6 @@
 
 # Settings and running the simulation
-num_games <- 1000
+num_games <- 10000
 num_decks <- 6
 num_players <- 2
 basic_strategy <- load_basic_strategy("./data/basic_strategy.csv")
@@ -16,7 +16,7 @@ can_insurance <- TRUE
 can_surrender <- FALSE
 blackjack_pays <- 1.5
 
-max_splits <- 1
+max_splits <- 2
 
 # Bet sizing
 min_bet <- 10  # Minimum bet size
@@ -25,30 +25,3 @@ bet_spread <- 10  # Factor to adjust bet size based on true count
 count_system <- "Hi-Lo" #'Hi-Lo','Hi-OptI','Hi-OptII','KO','OmegaII','Halves','ZenCount','10Count'
 
 results <- simulate_blackjack(num_games, num_decks, basic_strategy, count_values, reshuffle_threshold, can_split, can_double_down, max_splits, num_players, stand_soft_17)
-
-# Print or analyze results
-tmpresults <- vector("list", num_games)
-for(i in 1:num_games){
-  tmpresults[[i]] <- calculate_winners(results[[i]])
-}
-
-results_df <- as.data.frame(do.call(rbind,tmpresults))
-
-results_df %>%
-  mutate(p1 = cumsum(V1), p2 = cumsum(V2)) %>%
-  mutate(gameid=row_number()) %>% 
-  select(p1, p2, gameid) %>%
-  pivot_longer(cols = c('p1','p2')) %>% 
-  ggplot(aes(x = gameid, y=value, colour = name)) +
-  geom_step() + theme_minimal() +
-  ggtitle(paste0('Bet Strategy - P1: ', count_system, ' P2: Flat'))
-
-
-multistrat <- calculate_winners_strategies(results, 21)
-multistrat %>%
-  group_by(system) %>%
-  mutate(profit = cumsum(hand_result)) %>%
-  ggplot(aes(x = gameidx, y = profit, colour = system)) +
-  geom_step() +
-  theme_minimal() +
-  ggtitle('Different count strategies')
